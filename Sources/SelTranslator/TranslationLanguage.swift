@@ -1,6 +1,8 @@
 import Foundation
 
-struct TranslationLanguage: Equatable, Hashable {
+struct TranslationLanguage: Equatable, Hashable, Identifiable {
+    static let autoDetectID = "auto"
+
     let id: String
     let displayName: String
 
@@ -33,5 +35,9 @@ extension TranslationLanguage {
         .init(id: "vi", displayName: "Vietnamese")
     ]
 
-    static let fallback = TranslationLanguage(id: "en", displayName: "English")
+    static let fallbackTarget = TranslationLanguage(id: "en", displayName: "English")
+
+    static func localizedName(for identifier: String) -> String {
+        Locale.current.localizedString(forIdentifier: identifier) ?? identifier
+    }
 }

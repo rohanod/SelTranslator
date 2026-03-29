@@ -21,25 +21,26 @@ final class SettingsWindowController: NSWindowController {
 
         let contentView = SettingsView(
             languages: languageStore.availableLanguages,
-            selectedLanguageID: languageStore.selectedLanguage.id,
+            selectedSourceLanguageID: languageStore.defaultSourceLanguageID,
+            selectedTargetLanguageID: languageStore.defaultTargetLanguageID,
+            selectedRestoreTimeout: languageStore.draftRestoreTimeout,
             hotKey: hotKeyStore.hotKey,
-            onLanguageChanged: { [weak languageStore] languageID in
-                guard
-                    let languageStore,
-                    let language = languageStore.availableLanguages.first(where: { $0.id == languageID })
-                else { return }
-                languageStore.selectedLanguage = language
+            onSourceLanguageChanged: { [weak languageStore] sourceID in
+                languageStore?.defaultSourceLanguageID = sourceID
+                onSettingsChanged()
+            },
+            onTargetLanguageChanged: { [weak languageStore] targetID in
+                guard let languageStore, let language = languageStore.language(for: targetID) else { return }
+                languageStore.defaultTargetLanguage = language
+                onSettingsChanged()
+            },
+            onRestoreTimeoutChanged: { [weak languageStore] timeout in
+                languageStore?.draftRestoreTimeout = timeout
                 onSettingsChanged()
             },
             onHotKeyChanged: { [weak hotKeyStore] hotKey in
                 hotKeyStore?.hotKey = hotKey
                 onHotKeyApplied(hotKey)
-                onSettingsChanged()
-            },
-            onResetDefaults: { [weak languageStore, weak hotKeyStore] in
-                languageStore?.selectedLanguage = .fallback
-                hotKeyStore?.hotKey = .default
-                onHotKeyApplied(.default)
                 onSettingsChanged()
             }
         )

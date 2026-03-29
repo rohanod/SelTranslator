@@ -2,27 +2,21 @@ import AppKit
 
 @MainActor
 final class StatusBarController: NSObject {
-    private let languageStore: TranslationLanguageStore
     private let currentHotKey: () -> HotKeyConfiguration
+    private let onOpenTranslator: () -> Void
     private let onOpenSettings: () -> Void
-    private let onOpenTranslationSettings: () -> Void
-    private let onOpenAccessibilitySettings: () -> Void
     private let onQuit: () -> Void
     private let statusItem: NSStatusItem
 
     init(
-        languageStore: TranslationLanguageStore,
         currentHotKey: @escaping () -> HotKeyConfiguration,
+        onOpenTranslator: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
-        onOpenTranslationSettings: @escaping () -> Void,
-        onOpenAccessibilitySettings: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
-        self.languageStore = languageStore
         self.currentHotKey = currentHotKey
+        self.onOpenTranslator = onOpenTranslator
         self.onOpenSettings = onOpenSettings
-        self.onOpenTranslationSettings = onOpenTranslationSettings
-        self.onOpenAccessibilitySettings = onOpenAccessibilitySettings
         self.onQuit = onQuit
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
@@ -30,7 +24,10 @@ final class StatusBarController: NSObject {
 
     func install() {
         if let button = statusItem.button {
-            button.title = "SelTr"
+            let symbolName = NSImage(systemSymbolName: "translate", accessibilityDescription: "Translator") != nil ? "translate" : "globe"
+            button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Translator")
+            button.imagePosition = .imageOnly
+            button.title = ""
         }
         rebuildMenu()
     }
@@ -42,35 +39,18 @@ final class StatusBarController: NSObject {
     private func rebuildMenu() {
         let menu = NSMenu()
 
-        let current = NSMenuItem(
-            title: "Target: \(languageStore.selectedLanguage.displayName)",
-            action: nil,
-            keyEquivalent: ""
-        )
-        current.isEnabled = false
-        menu.addItem(current)
-
-        let languagesItem = NSMenuItem(title: "Target Language", action: nil, keyEquivalent: "")
-        let languageSubmenu = NSMenu(title: "Target Language")
-        for language in languageStore.availableLanguages {
-            let item = NSMenuItem(
-                title: language.displayName,
-                action: #selector(selectLanguage(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = language.id
-            item.state = language.id == languageStore.selectedLanguage.id ? .on : .off
-            languageSubmenu.addItem(item)
-        }
-        languagesItem.submenu = languageSubmenu
-        menu.addItem(languagesItem)
-
         let hotkeyItem = NSMenuItem(title: "Hotkey: \(currentHotKey().displayString)", action: nil, keyEquivalent: "")
         hotkeyItem.isEnabled = false
         menu.addItem(hotkeyItem)
-
         menu.addItem(.separator())
+
+        let openTranslatorItem = NSMenuItem(
+            title: "Open Translator",
+            action: #selector(openTranslator),
+            keyEquivalent: ""
+        )
+        openTranslatorItem.target = self
+        menu.addItem(openTranslatorItem)
 
         let settingsItem = NSMenuItem(
             title: "Settings...",
@@ -79,22 +59,6 @@ final class StatusBarController: NSObject {
         )
         settingsItem.target = self
         menu.addItem(settingsItem)
-
-        let openTranslationSettingsItem = NSMenuItem(
-            title: "Open Translation Settings",
-            action: #selector(openTranslationSettings),
-            keyEquivalent: ""
-        )
-        openTranslationSettingsItem.target = self
-        menu.addItem(openTranslationSettingsItem)
-
-        let accessibilityItem = NSMenuItem(
-            title: "Open Accessibility Settings",
-            action: #selector(openAccessibilitySettings),
-            keyEquivalent: ""
-        )
-        accessibilityItem.target = self
-        menu.addItem(accessibilityItem)
 
         menu.addItem(.separator())
 
@@ -106,31 +70,13 @@ final class StatusBarController: NSObject {
     }
 
     @objc
-    private func selectLanguage(_ sender: NSMenuItem) {
-        guard
-            let languageID = sender.representedObject as? String,
-            let language = languageStore.availableLanguages.first(where: { $0.id == languageID })
-        else {
-            return
-        }
-        languageStore.selectedLanguage = language
-        rebuildMenu()
+    private func openTranslator() {
+        onOpenTranslator()
     }
 
     @objc
     private func openSettings() {
         onOpenSettings()
-        rebuildMenu()
-    }
-
-    @objc
-    private func openTranslationSettings() {
-        onOpenTranslationSettings()
-    }
-
-    @objc
-    private func openAccessibilitySettings() {
-        onOpenAccessibilitySettings()
     }
 
     @objc

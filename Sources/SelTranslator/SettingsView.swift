@@ -2,13 +2,18 @@ import SwiftUI
 
 struct SettingsView: View {
     let languages: [TranslationLanguage]
-    let selectedLanguageID: String
+    let selectedSourceLanguageID: String
+    let selectedTargetLanguageID: String
+    let selectedRestoreTimeout: DraftRestoreTimeout
     let hotKey: HotKeyConfiguration
-    let onLanguageChanged: (String) -> Void
+    let onSourceLanguageChanged: (String) -> Void
+    let onTargetLanguageChanged: (String) -> Void
+    let onRestoreTimeoutChanged: (DraftRestoreTimeout) -> Void
     let onHotKeyChanged: (HotKeyConfiguration) -> Void
-    let onResetDefaults: () -> Void
 
-    @State private var localLanguageID: String
+    @State private var localSourceLanguageID: String
+    @State private var localTargetLanguageID: String
+    @State private var localRestoreTimeout: DraftRestoreTimeout
     @State private var localKeyCode: UInt32
     @State private var useCommand: Bool
     @State private var useOption: Bool
@@ -17,20 +22,28 @@ struct SettingsView: View {
 
     init(
         languages: [TranslationLanguage],
-        selectedLanguageID: String,
+        selectedSourceLanguageID: String,
+        selectedTargetLanguageID: String,
+        selectedRestoreTimeout: DraftRestoreTimeout,
         hotKey: HotKeyConfiguration,
-        onLanguageChanged: @escaping (String) -> Void,
-        onHotKeyChanged: @escaping (HotKeyConfiguration) -> Void,
-        onResetDefaults: @escaping () -> Void
+        onSourceLanguageChanged: @escaping (String) -> Void,
+        onTargetLanguageChanged: @escaping (String) -> Void,
+        onRestoreTimeoutChanged: @escaping (DraftRestoreTimeout) -> Void,
+        onHotKeyChanged: @escaping (HotKeyConfiguration) -> Void
     ) {
         self.languages = languages
-        self.selectedLanguageID = selectedLanguageID
+        self.selectedSourceLanguageID = selectedSourceLanguageID
+        self.selectedTargetLanguageID = selectedTargetLanguageID
+        self.selectedRestoreTimeout = selectedRestoreTimeout
         self.hotKey = hotKey
-        self.onLanguageChanged = onLanguageChanged
+        self.onSourceLanguageChanged = onSourceLanguageChanged
+        self.onTargetLanguageChanged = onTargetLanguageChanged
+        self.onRestoreTimeoutChanged = onRestoreTimeoutChanged
         self.onHotKeyChanged = onHotKeyChanged
-        self.onResetDefaults = onResetDefaults
 
-        _localLanguageID = State(initialValue: selectedLanguageID)
+        _localSourceLanguageID = State(initialValue: selectedSourceLanguageID)
+        _localTargetLanguageID = State(initialValue: selectedTargetLanguageID)
+        _localRestoreTimeout = State(initialValue: selectedRestoreTimeout)
         _localKeyCode = State(initialValue: hotKey.keyCode)
         _useCommand = State(initialValue: hotKey.isCommandEnabled)
         _useOption = State(initialValue: hotKey.isOptionEnabled)
@@ -44,19 +57,42 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             Text("SelTranslator Settings")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
 
-            GroupBox("Translation") {
-                Picker("Target Language", selection: $localLanguageID) {
-                    ForEach(languages, id: \.id) { language in
-                        Text(language.displayName).tag(language.id)
+            GroupBox("Defaults") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Default From", selection: $localSourceLanguageID) {
+                        Text("Auto Detect").tag(TranslationLanguage.autoDetectID)
+                        ForEach(languages, id: \.id) { language in
+                            Text(language.displayName).tag(language.id)
+                        }
                     }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: localLanguageID) { _, newValue in
-                    onLanguageChanged(newValue)
+                    .pickerStyle(.menu)
+                    .onChange(of: localSourceLanguageID) { _, newValue in
+                        onSourceLanguageChanged(newValue)
+                    }
+
+                    Picker("Default To", selection: $localTargetLanguageID) {
+                        ForEach(languages, id: \.id) { language in
+                            Text(language.displayName).tag(language.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: localTargetLanguageID) { _, newValue in
+                        onTargetLanguageChanged(newValue)
+                    }
+
+                    Picker("Draft Restore", selection: $localRestoreTimeout) {
+                        ForEach(DraftRestoreTimeout.allCases) { timeout in
+                            Text(timeout.displayName).tag(timeout)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: localRestoreTimeout) { _, newValue in
+                        onRestoreTimeoutChanged(newValue)
+                    }
                 }
             }
 
@@ -85,30 +121,16 @@ struct SettingsView: View {
                     .onChange(of: useCommand) { _, _ in applyHotKey() }
 
                     Text("Current shortcut: \(currentHotKey.displayString)")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
             }
-
-            HStack {
-                Spacer()
-                Button("Reset Defaults") {
-                    localLanguageID = TranslationLanguage.fallback.id
-                    localKeyCode = HotKeyConfiguration.default.keyCode
-                    useControl = HotKeyConfiguration.default.isControlEnabled
-                    useOption = HotKeyConfiguration.default.isOptionEnabled
-                    useShift = HotKeyConfiguration.default.isShiftEnabled
-                    useCommand = HotKeyConfiguration.default.isCommandEnabled
-                    onResetDefaults()
-                }
-            }
         }
-        .padding(18)
-        .frame(width: 460, height: 280)
+        .padding(20)
+        .frame(width: 440, height: 280)
     }
 
     private func applyHotKey() {
-        let hotKey = currentHotKey
-        onHotKeyChanged(hotKey)
+        onHotKeyChanged(currentHotKey)
     }
 }

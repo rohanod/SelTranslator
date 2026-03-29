@@ -1,34 +1,32 @@
 import AppKit
-@preconcurrency import Translation
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let languageStore = TranslationLanguageStore()
     private let hotKeyStore = HotKeyStore()
     private let accessibilityService = AccessibilitySelectionService()
-    private let clipboardService = ClipboardService()
-    private let overlayController = OverlayController()
     private let translationService = TranslationService()
+
+    private lazy var translatorViewModel = TranslatorViewModel(
+        languageStore: languageStore,
+        translationService: translationService
+    )
+    private lazy var translatorPanelController = TranslatorPanelController(viewModel: translatorViewModel)
 
     private var statusBarController: StatusBarController?
     private var hotKeyManager: GlobalHotKeyManager?
     private var settingsWindowController: SettingsWindowController?
-    private var modelOnboardingWindowController: TranslationModelOnboardingWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusBarController = StatusBarController(
-            languageStore: languageStore,
             currentHotKey: { [weak self] in
                 self?.hotKeyStore.hotKey ?? .default
             },
+            onOpenTranslator: { [weak self] in
+                self?.showTranslator()
+            },
             onOpenSettings: { [weak self] in
                 self?.openSettings()
-            },
-            onOpenTranslationSettings: { [weak self] in
-                self?.openTranslationSettings()
-            },
-            onOpenAccessibilitySettings: { [weak self] in
-                self?.openAccessibilitySettings()
             },
             onQuit: {
                 NSApp.terminate(nil)
@@ -37,165 +35,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController?.install()
 
         hotKeyManager = GlobalHotKeyManager { [weak self] in
-            guard let self else { return }
-            Task {
-                await self.handleTranslationTrigger()
+            Task { @MainActor [weak self] in
+                self?.showTranslator()
             }
         }
 
         applyHotKey(hotKeyStore.hotKey)
-
-        if !accessibilityService.hasPermission(prompt: false) {
-            _ = accessibilityService.hasPermission(prompt: true)
-            overlayController.show(
-                "Enable Accessibility access to use selection translation.",
-                kind: .error
-            )
-        }
     }
 
-    private func handleTranslationTrigger() async {
-        Diagnostics.info("Hotkey pressed; starting translation.")
-        guard accessibilityService.hasPermission(prompt: true) else {
-            overlayController.show(
-                "Accessibility permission is required.",
-                kind: .error
-            )
+    private func showTranslator() {
+        if translatorPanelController.isVisible {
+            translatorPanelController.dismiss(reason: .escape)
             return
         }
 
-        let target = languageStore.selectedLanguage.localeLanguage
+        let prefill = captureSelectedTextIfAvailable()
+        translatorViewModel.prepareForPresentation(prefillText: prefill)
+        translatorPanelController.show()
+    }
+
+    private func captureSelectedTextIfAvailable() -> String? {
+        guard accessibilityService.hasPermission(prompt: false) else {
+            return nil
+        }
+
         do {
             let selection = try accessibilityService.captureSelection()
-            Diagnostics.info(
-                "Selection captured. editable=\(selection.isEditable) chars=\(selection.selectedText.count)"
-            )
-            let translated = try await translationService.translate(
-                selection.selectedText,
-                targetLanguage: target
-            )
-            Diagnostics.info("Translation completed. translatedChars=\(translated.count)")
-
-            let copied = clipboardService.copy(text: translated)
-            Diagnostics.info("Clipboard write result: \(copied)")
-
-            if selection.isEditable && accessibilityService.replaceSelectedText(in: selection, with: translated) {
-                overlayController.show("Translated and replaced.", kind: .success)
-                return
-            }
-
-            if copied {
-                overlayController.show("Translated and copied to clipboard.", kind: .success)
-            } else {
-                overlayController.show("Translation done, but clipboard write failed.", kind: .error)
-            }
-        } catch let selectionError as SelectionServiceError {
-            Diagnostics.info(
-                "AX selection capture failed (\(selectionError.localizedDescription)); trying clipboard fallback."
-            )
-
-            do {
-                if try await translateFromClipboardFallback(targetLanguage: target) {
-                    return
-                }
-            } catch {
-                Diagnostics.error("Clipboard fallback failed: \(Diagnostics.describe(error))")
-                handleTranslationError(error)
-                return
-            }
-
-            handleTranslationError(selectionError)
+            let trimmed = selection.selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            Diagnostics.info("Prefilled translator from selection. chars=\(trimmed.count)")
+            return trimmed
         } catch {
-            handleTranslationError(error)
-        }
-    }
-
-    private func translateFromClipboardFallback(targetLanguage: Locale.Language) async throws -> Bool {
-        guard let copiedText = await clipboardService.captureSelectedTextByCopyShortcut() else {
-            Diagnostics.info("Clipboard fallback could not capture text.")
-            return false
-        }
-        Diagnostics.info("Clipboard fallback captured chars=\(copiedText.count)")
-
-        let translated = try await translationService.translate(
-            copiedText,
-            targetLanguage: targetLanguage
-        )
-        Diagnostics.info("Clipboard fallback translation completed. translatedChars=\(translated.count)")
-
-        let copied = clipboardService.copy(text: translated)
-        Diagnostics.info("Clipboard fallback write result: \(copied)")
-        if copied {
-            overlayController.show("Translated and copied to clipboard.", kind: .success)
-        } else {
-            overlayController.show("Translation done, but clipboard write failed.", kind: .error)
-        }
-
-        return true
-    }
-
-    private func handleTranslationError(_ error: Error) {
-        Diagnostics.error("Translation failed: \(Diagnostics.describe(error))")
-        if case let .languageModelsMissing(source, target, sourceLanguage, targetLanguage) = error as? TranslationServiceError {
-            Task { [weak self] in
-                guard let self else { return }
-                if await shouldOpenModelOnboarding(sourceLanguage: sourceLanguage, targetLanguage: targetLanguage) {
-                    openModelOnboarding(
-                        sourceLanguage: sourceLanguage,
-                        targetLanguage: targetLanguage,
-                        sourceDisplayName: source,
-                        targetDisplayName: target
-                    )
-                    overlayController.show(
-                        "Models are required for \(source) -> \(target).",
-                        kind: .error
-                    )
-                } else {
-                    overlayController.show(
-                        "Translation failed even though models appear installed. Retry.",
-                        kind: .error
-                    )
-                }
-            }
-        } else {
-            overlayController.show(error.localizedDescription, kind: .error)
-        }
-    }
-
-    private func shouldOpenModelOnboarding(
-        sourceLanguage: Locale.Language,
-        targetLanguage: Locale.Language
-    ) async -> Bool {
-        if #available(macOS 26.0, *) {
-            let availability = LanguageAvailability()
-            let status = await availability.status(from: sourceLanguage, to: targetLanguage)
-            Diagnostics.info(
-                "Onboarding gate availability status from=\(sourceLanguage.minimalIdentifier) to=\(targetLanguage.minimalIdentifier) status=\(describe(status))"
-            )
-            switch status {
-            case .supported:
-                return true
-            case .installed, .unsupported:
-                return false
-            @unknown default:
-                return false
-            }
-        }
-
-        return true
-    }
-
-    @available(macOS 26.0, *)
-    private func describe(_ status: LanguageAvailability.Status) -> String {
-        switch status {
-        case .installed:
-            return "installed"
-        case .supported:
-            return "supported"
-        case .unsupported:
-            return "unsupported"
-        @unknown default:
-            return "unknown"
+            return nil
         }
     }
 
@@ -206,10 +77,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Diagnostics.info("Hotkey registered: \(hotKey.displayString)")
         } catch {
             Diagnostics.error("Hotkey registration failed: \(Diagnostics.describe(error))")
-            overlayController.show(
-                "Unable to register hotkey: \(hotKey.displayString).",
-                kind: .error
-            )
         }
     }
 
@@ -221,56 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.applyHotKey(hotKey)
             },
             onSettingsChanged: { [weak self] in
+                self?.translatorViewModel.reloadSettings()
                 self?.statusBarController?.refresh()
             }
         )
         settingsWindowController?.show()
-    }
-
-    private func openModelOnboarding(
-        sourceLanguage: Locale.Language,
-        targetLanguage: Locale.Language,
-        sourceDisplayName: String,
-        targetDisplayName: String
-    ) {
-        modelOnboardingWindowController = TranslationModelOnboardingWindowController(
-            sourceLanguage: sourceLanguage,
-            targetLanguage: targetLanguage,
-            sourceDisplayName: sourceDisplayName,
-            targetDisplayName: targetDisplayName,
-            onReady: { [weak self] in
-                self?.overlayController.show("Models ready. Retry translation.", kind: .success)
-            }
-        )
-        modelOnboardingWindowController?.show()
-    }
-
-    private func openTranslationSettings() {
-        let urls = [
-            "x-apple.systempreferences:com.apple.Localization-Settings.extension",
-            "x-apple.systempreferences:com.apple.Localization-Settings.extension?Language"
-        ]
-        for raw in urls {
-            if let url = URL(string: raw), NSWorkspace.shared.open(url) {
-                return
-            }
-        }
-
-        if let settingsURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systempreferences") {
-            let config = NSWorkspace.OpenConfiguration()
-            NSWorkspace.shared.openApplication(at: settingsURL, configuration: config) { _, _ in }
-            overlayController.show(
-                "Open: General > Language & Region > Translation Languages",
-                kind: .error
-            )
-        }
-    }
-
-    private func openAccessibilitySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-            return
-        }
-        _ = NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Library/PreferencePanes/Security.prefPane"))
     }
 }
