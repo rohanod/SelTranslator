@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class TranslatorPanelController: NSObject, NSWindowDelegate {
-    private let popupSize = NSSize(width: 700, height: 338)
+    private let popupSize = NSSize(width: 760, height: 360)
     private let copyToastSize = NSSize(width: 260, height: 92)
     private let popupVerticalOffset: CGFloat = 40
     private let toastVerticalOffset: CGFloat = 32
