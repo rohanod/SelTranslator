@@ -7,10 +7,9 @@ struct TranslatorPopupView: View {
     let onCopyAndClose: () -> Void
     @FocusState private var isEditorFocused: Bool
 
-    private let columnSpacing: CGFloat = 12
+    private let columnSpacing: CGFloat = 14
     private let swapColumnWidth: CGFloat = 40
-    private let sourceInset = EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
-    private let pickerStatusHeight: CGFloat = 14
+    private let sourceInset = EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14)
 
     init(viewModel: TranslatorViewModel, onCopyAndClose: @escaping () -> Void) {
         self.viewModel = viewModel
@@ -19,22 +18,19 @@ struct TranslatorPopupView: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.ultraThickMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.16), radius: 28, y: 16)
+            AppPanelBackground()
 
-            VStack(alignment: .leading, spacing: 12) {
-                utilityBar
-                pickerRow
-                contentRow
+            VStack(alignment: .leading, spacing: AppUI.Spacing.large) {
+                header
+                languageControls
+                workArea
+                Divider()
+                    .overlay(AppUI.separator)
+                footerActions
             }
-            .padding(18)
+            .padding(22)
         }
-        .frame(width: 700, height: 338)
+        .frame(width: 760, height: 404)
         .animation(.easeInOut(duration: 0.18), value: viewModel.isTranslating)
         .onAppear {
             requestEditorFocus()
@@ -65,47 +61,12 @@ struct TranslatorPopupView: View {
         .disabled(viewModel.translatedText.isEmpty)
         .hidden()
 
-        responderShortcut(
-            title: "Cut",
-            key: "x",
-            modifiers: .command,
-            action: #selector(NSText.cut(_:))
-        )
-
-        responderShortcut(
-            title: "Copy",
-            key: "c",
-            modifiers: .command,
-            action: #selector(NSText.copy(_:))
-        )
-
-        responderShortcut(
-            title: "Paste",
-            key: "v",
-            modifiers: .command,
-            action: #selector(NSText.paste(_:))
-        )
-
-        responderShortcut(
-            title: "Select All",
-            key: "a",
-            modifiers: .command,
-            action: #selector(NSText.selectAll(_:))
-        )
-
-        responderShortcut(
-            title: "Undo",
-            key: "z",
-            modifiers: .command,
-            action: Selector(("undo:"))
-        )
-
-        responderShortcut(
-            title: "Redo",
-            key: "z",
-            modifiers: [.command, .shift],
-            action: Selector(("redo:"))
-        )
+        responderShortcut(title: "Cut", key: "x", modifiers: .command, action: #selector(NSText.cut(_:)))
+        responderShortcut(title: "Copy", key: "c", modifiers: .command, action: #selector(NSText.copy(_:)))
+        responderShortcut(title: "Paste", key: "v", modifiers: .command, action: #selector(NSText.paste(_:)))
+        responderShortcut(title: "Select All", key: "a", modifiers: .command, action: #selector(NSText.selectAll(_:)))
+        responderShortcut(title: "Undo", key: "z", modifiers: .command, action: Selector(("undo:")))
+        responderShortcut(title: "Redo", key: "z", modifiers: [.command, .shift], action: Selector(("redo:")))
     }
 
     private func responderShortcut(
@@ -121,58 +82,27 @@ struct TranslatorPopupView: View {
         .hidden()
     }
 
-    private var utilityBar: some View {
-        HStack(spacing: 10) {
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: AppUI.Spacing.medium) {
             Text("Translate")
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.system(size: AppUI.FontSize.title, weight: .semibold, design: .rounded))
 
             Spacer()
 
-            Text("Esc closes")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
-
-            Button {
-                viewModel.copyTranslation()
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .background(
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-            )
-            .disabled(viewModel.translatedText.isEmpty)
-            .opacity(viewModel.translatedText.isEmpty ? 0.45 : 1)
         }
     }
 
-    private var pickerRow: some View {
-        HStack(alignment: .top, spacing: columnSpacing) {
-            languagePickerCard(title: "From") {
-                VStack(alignment: .leading, spacing: 4) {
-                    Picker("From", selection: $viewModel.selectedSourceLanguageID) {
-                        Text("Auto Detect").tag(TranslationLanguage.autoDetectID)
-                        ForEach(viewModel.availableLanguages) { language in
-                            Text(language.displayName).tag(language.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-
-                    if let detectedSourceLabel = viewModel.detectedSourceLabel,
-                       viewModel.selectedSourceLanguageID == TranslationLanguage.autoDetectID {
-                        Text("Detected \(detectedSourceLabel)")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .transition(.opacity)
-                    } else {
-                        Color.clear
-                            .frame(height: pickerStatusHeight)
+    private var languageControls: some View {
+        HStack(alignment: .center, spacing: columnSpacing) {
+            pickerColumn(title: "From", detail: sourcePickerDetail) {
+                Picker("From", selection: $viewModel.selectedSourceLanguageID) {
+                    Text(autoDetectPickerTitle).tag(TranslationLanguage.autoDetectID)
+                    ForEach(viewModel.availableLanguages) { language in
+                        Text(language.displayName).tag(language.id)
                     }
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
             }
             .frame(maxWidth: .infinity)
 
@@ -180,56 +110,49 @@ struct TranslatorPopupView: View {
                 viewModel.swapLanguages()
             } label: {
                 Image(systemName: "arrow.left.arrow.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(Color.white.opacity(0.08)))
+                    .font(.system(size: 12, weight: .semibold))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(AppIconButtonStyle())
             .frame(width: swapColumnWidth)
             .disabled(!viewModel.canSwapLanguages)
             .opacity(viewModel.canSwapLanguages ? 1 : 0.4)
             .help("Swap source and target languages")
+            .padding(.top, 16)
 
-            languagePickerCard(title: "To") {
-                VStack(alignment: .leading, spacing: 4) {
-                    Picker("To", selection: $viewModel.selectedTargetLanguageID) {
-                        ForEach(viewModel.availableLanguages) { language in
-                            Text(language.displayName).tag(language.id)
-                        }
+            pickerColumn(title: "To") {
+                Picker("To", selection: $viewModel.selectedTargetLanguageID) {
+                    ForEach(viewModel.availableLanguages) { language in
+                        Text(language.displayName).tag(language.id)
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-
-                    Color.clear
-                        .frame(height: pickerStatusHeight)
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
             }
             .frame(maxWidth: .infinity)
         }
     }
 
-    private var contentRow: some View {
+    private var workArea: some View {
         HStack(alignment: .top, spacing: columnSpacing) {
-            sourceEditor
+            sourcePanel
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            Color.clear
-                .frame(width: swapColumnWidth)
+            VStack {
+                Divider()
+                    .overlay(AppUI.separator)
+            }
+            .frame(width: swapColumnWidth)
 
             resultPanel
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private var sourceEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Source")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
-
+    private var sourcePanel: some View {
+        AppSurface(title: "Source") {
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.black.opacity(0.10))
+                RoundedRectangle(cornerRadius: AppUI.Radius.editor, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
 
                 TextEditor(text: $viewModel.sourceText)
                     .font(.system(size: 15, weight: .regular, design: .rounded))
@@ -238,9 +161,9 @@ struct TranslatorPopupView: View {
                     .focused($isEditorFocused)
 
                 if viewModel.sourceText.isEmpty {
-                    Text("Type or trigger the hotkey with text selected to prefill this field.")
+                    Text("Type or use the shortcut with selected text.")
                         .font(.system(size: 15, weight: .regular, design: .rounded))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppUI.quietSecondary)
                         .padding(sourceInset)
                         .allowsHitTesting(false)
                 }
@@ -250,73 +173,99 @@ struct TranslatorPopupView: View {
     }
 
     private var resultPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Translation")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
-
+        AppSurface(title: "Translation") {
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: AppUI.Radius.editor, style: .continuous)
+                    .fill(Color.primary.opacity(0.035))
 
                 Group {
                     if viewModel.isTranslating {
-                        HStack(spacing: 10) {
+                        HStack(spacing: AppUI.Spacing.small) {
                             ProgressView()
                             Text("Translating…")
-                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .font(.system(size: AppUI.FontSize.body, weight: .regular, design: .rounded))
                         }
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     } else if let errorMessage = viewModel.errorMessage {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Translation unavailable", systemImage: "exclamationmark.triangle")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        VStack(alignment: .leading, spacing: AppUI.Spacing.small) {
+                            Text("Translation unavailable")
+                                .font(.system(size: AppUI.FontSize.body, weight: .medium, design: .rounded))
                             Text(errorMessage)
                                 .font(.system(size: 13, weight: .regular, design: .rounded))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppUI.quietSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     } else if viewModel.translatedText.isEmpty {
-                        Text("Your translation will appear here.")
-                            .font(.system(size: 14, weight: .regular, design: .rounded))
-                            .foregroundStyle(.secondary)
+                        Text("Translation appears here.")
+                            .font(.system(size: AppUI.FontSize.body, weight: .regular, design: .rounded))
+                            .foregroundStyle(AppUI.quietSecondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .transition(.opacity)
                     } else {
                         ScrollView {
                             Text(viewModel.translatedText)
-                                .font(.system(size: 16, weight: .medium, design: .rounded))
+                                .font(.system(size: 16, weight: .regular, design: .rounded))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
-                .padding(16)
+                .padding(14)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private func languagePickerCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+    private var footerActions: some View {
+        HStack(spacing: AppUI.Spacing.small) {
+            Button("Clear") {
+                viewModel.clearSourceText()
+            }
+            .buttonStyle(AppSecondaryButtonStyle())
+            .disabled(viewModel.sourceText.isEmpty && viewModel.translatedText.isEmpty)
+            .opacity(viewModel.sourceText.isEmpty && viewModel.translatedText.isEmpty ? 0.45 : 1)
+
+            Spacer()
+
+            Button("Copy") {
+                viewModel.copyTranslation()
+            }
+            .buttonStyle(AppSecondaryButtonStyle())
+            .disabled(viewModel.translatedText.isEmpty)
+            .opacity(viewModel.translatedText.isEmpty ? 0.45 : 1)
+
+            Button("Copy & Close") {
+                onCopyAndClose()
+            }
+            .buttonStyle(AppPrimaryButtonStyle())
+            .disabled(viewModel.translatedText.isEmpty)
+            .opacity(viewModel.translatedText.isEmpty ? 0.45 : 1)
+        }
+    }
+
+    private var autoDetectPickerTitle: String {
+        if let detectedSourceLabel = viewModel.detectedSourceLabel,
+           viewModel.selectedSourceLanguageID == TranslationLanguage.autoDetectID {
+            return "Auto Detect (\(detectedSourceLabel))"
+        }
+
+        return "Auto Detect"
+    }
+
+    private var sourcePickerDetail: String? {
+        nil
+    }
+
+    private func pickerColumn<Content: View>(title: String, detail: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        AppSurface(title: title, detail: detail) {
             content()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.08))
-        )
     }
 
     private func requestEditorFocus() {

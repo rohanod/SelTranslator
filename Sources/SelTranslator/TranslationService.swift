@@ -60,10 +60,22 @@ actor TranslationService {
             throw TranslationServiceError.emptyInput
         }
 
+        let requestedSourceID = sourceLanguage?.id ?? "auto"
+        Diagnostics.info(
+            "Translate request chars=\(trimmed.count) explicitSource=\(requestedSourceID) target=\(targetLanguage.id)"
+        )
+
         let resolvedSource = try sourceLanguage?.localeLanguage ?? detectSourceLanguage(in: trimmed)
         let resolvedTarget = targetLanguage.localeLanguage
 
+        Diagnostics.info(
+            "Resolved translation languages from=\(resolvedSource.minimalIdentifier) to=\(resolvedTarget.minimalIdentifier)"
+        )
+
         if resolvedSource.minimalIdentifier == resolvedTarget.minimalIdentifier {
+            Diagnostics.info(
+                "Skipping translation because source and target match: \(resolvedSource.minimalIdentifier)"
+            )
             return TranslationResult(
                 sourceLanguageIdentifier: resolvedSource.minimalIdentifier,
                 sourceLanguageDisplayName: localizedLanguageName(for: resolvedSource),
@@ -100,18 +112,27 @@ actor TranslationService {
                 targetLanguage: resolvedTarget
             )
             rememberInstalledPair(resolvedSource, resolvedTarget)
+            Diagnostics.info(
+                "Translation succeeded from=\(resolvedSource.minimalIdentifier) to=\(resolvedTarget.minimalIdentifier) outputChars=\(translated.count)"
+            )
             return TranslationResult(
                 sourceLanguageIdentifier: resolvedSource.minimalIdentifier,
                 sourceLanguageDisplayName: localizedLanguageName(for: resolvedSource),
                 translatedText: translated
             )
         } catch let translationError as TranslationError {
+            Diagnostics.error(
+                "Translation session failed from=\(resolvedSource.minimalIdentifier) to=\(resolvedTarget.minimalIdentifier) details=\(Diagnostics.describe(translationError))"
+            )
             switch translationError {
             case .notInstalled:
                 let recovered = try await recoverFromNotInstalled(
                     text: trimmed,
                     sourceLanguage: resolvedSource,
                     targetLanguage: resolvedTarget
+                )
+                Diagnostics.info(
+                    "Recovered translation after install check from=\(recovered.source.minimalIdentifier) to=\(resolvedTarget.minimalIdentifier) outputChars=\(recovered.text.count)"
                 )
                 return TranslationResult(
                     sourceLanguageIdentifier: recovered.source.minimalIdentifier,
@@ -121,6 +142,11 @@ actor TranslationService {
             default:
                 throw translationError
             }
+        } catch {
+            Diagnostics.error(
+                "Translation failed with non-TranslationError from=\(resolvedSource.minimalIdentifier) to=\(resolvedTarget.minimalIdentifier) details=\(Diagnostics.describe(error))"
+            )
+            throw error
         }
     }
 
@@ -130,6 +156,9 @@ actor TranslationService {
         sourceLanguage: Locale.Language,
         targetLanguage: Locale.Language
     ) async throws -> String {
+        Diagnostics.info(
+            "Preparing translation session from=\(sourceLanguage.minimalIdentifier) to=\(targetLanguage.minimalIdentifier) chars=\(text.count)"
+        )
         let session = TranslationSession(
             installedSource: sourceLanguage,
             target: targetLanguage
@@ -149,6 +178,9 @@ actor TranslationService {
         var attempt = 1
         while true {
             do {
+                Diagnostics.info(
+                    "Translation attempt=\(attempt) from=\(sourceLanguage.minimalIdentifier) to=\(targetLanguage.minimalIdentifier)"
+                )
                 return try await translateUsingSession(
                     text: text,
                     sourceLanguage: sourceLanguage,
@@ -157,10 +189,16 @@ actor TranslationService {
             } catch let translationError as TranslationError {
                 switch translationError {
                 case .notInstalled where attempt < maxAttempts:
+                    Diagnostics.info(
+                        "Translation attempt=\(attempt) hit notInstalled; retrying from=\(sourceLanguage.minimalIdentifier) to=\(targetLanguage.minimalIdentifier)"
+                    )
                     attempt += 1
                     try? await Task.sleep(nanoseconds: 200_000_000)
                     continue
                 default:
+                    Diagnostics.error(
+                        "Translation attempt=\(attempt) failed from=\(sourceLanguage.minimalIdentifier) to=\(targetLanguage.minimalIdentifier) details=\(Diagnostics.describe(translationError))"
+                    )
                     throw translationError
                 }
             }
@@ -173,8 +211,15 @@ actor TranslationService {
         sourceLanguage: Locale.Language,
         targetLanguage: Locale.Language
     ) async throws -> (source: Locale.Language, text: String) {
+        Diagnostics.info(
+            "Recovering from notInstalled from=\(sourceLanguage.minimalIdentifier) to=\(targetLanguage.minimalIdentifier)"
+        )
         let availability = LanguageAvailability()
         let refreshedStatus = await availability.status(from: sourceLanguage, to: targetLanguage)
+
+        Diagnostics.info(
+            "Refreshed availability status=\(describe(refreshedStatus)) from=\(sourceLanguage.minimalIdentifier) to=\(targetLanguage.minimalIdentifier)"
+        )
 
         let normalizedSource = normalize(sourceLanguage)
         let normalizedTarget = normalize(targetLanguage)
@@ -186,6 +231,9 @@ actor TranslationService {
             sourceLanguage: sourceLanguage,
             targetLanguage: targetLanguage
         ) {
+            Diagnostics.info(
+                "Found installed variant pair from=\(installedVariantPair.0.minimalIdentifier) to=\(installedVariantPair.1.minimalIdentifier)"
+            )
             let translated = try await translateUsingSessionWithRetry(
                 text: text,
                 sourceLanguage: installedVariantPair.0,
