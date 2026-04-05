@@ -179,7 +179,9 @@ final class TranslatorViewModel {
             translatedText = ""
             detectedSourceLabel = nil
             errorMessage = error.localizedDescription
-            Diagnostics.error("Popup translation failed: \(Diagnostics.describe(error))")
+            Diagnostics.error(
+                "Popup translation failed sourceID=\(sourceID) targetID=\(targetID) chars=\(sourceText.count) generation=\(generation) details=\(Diagnostics.describe(error))"
+            )
         }
 
         isTranslating = false

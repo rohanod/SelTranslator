@@ -57,13 +57,40 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("SelTranslator Settings")
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppUI.Spacing.xLarge) {
+                settingsHeader
+                sectionDivider
+                translationDefaultsSection
+                sectionDivider
+                popupBehaviorSection
+                sectionDivider
+                globalShortcutSection
+                sectionDivider
+                helpSection
+            }
+            .padding(28)
+        }
+        .frame(width: 540, height: 500)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
 
-            GroupBox("Defaults") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Picker("Default From", selection: $localSourceLanguageID) {
+    private var settingsHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("SelTranslator Settings")
+                .font(.system(size: AppUI.FontSize.headline, weight: .semibold, design: .rounded))
+
+            Text("Defaults and shortcut behavior.")
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .foregroundStyle(AppUI.quietSecondary)
+        }
+    }
+
+    private var translationDefaultsSection: some View {
+        AppSectionCard(title: "Translation Defaults") {
+            VStack(alignment: .leading, spacing: AppUI.Spacing.medium) {
+                settingRow(title: "Source language") {
+                    Picker("Default source language", selection: $localSourceLanguageID) {
                         Text("Auto Detect").tag(TranslationLanguage.autoDetectID)
                         ForEach(languages, id: \.id) { language in
                             Text(language.displayName).tag(language.id)
@@ -73,8 +100,10 @@ struct SettingsView: View {
                     .onChange(of: localSourceLanguageID) { _, newValue in
                         onSourceLanguageChanged(newValue)
                     }
+                }
 
-                    Picker("Default To", selection: $localTargetLanguageID) {
+                settingRow(title: "Target language") {
+                    Picker("Default target language", selection: $localTargetLanguageID) {
                         ForEach(languages, id: \.id) { language in
                             Text(language.displayName).tag(language.id)
                         }
@@ -83,21 +112,31 @@ struct SettingsView: View {
                     .onChange(of: localTargetLanguageID) { _, newValue in
                         onTargetLanguageChanged(newValue)
                     }
-
-                    Picker("Draft Restore", selection: $localRestoreTimeout) {
-                        ForEach(DraftRestoreTimeout.allCases) { timeout in
-                            Text(timeout.displayName).tag(timeout)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .onChange(of: localRestoreTimeout) { _, newValue in
-                        onRestoreTimeoutChanged(newValue)
-                    }
                 }
             }
+        }
+    }
 
-            GroupBox("Global Hotkey") {
-                VStack(alignment: .leading, spacing: 10) {
+    private var popupBehaviorSection: some View {
+        AppSectionCard(title: "Popup Behavior") {
+            settingRow(title: "Draft restore") {
+                Picker("Draft restore timeout", selection: $localRestoreTimeout) {
+                    ForEach(DraftRestoreTimeout.allCases) { timeout in
+                        Text(timeout.displayName).tag(timeout)
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: localRestoreTimeout) { _, newValue in
+                    onRestoreTimeoutChanged(newValue)
+                }
+            }
+        }
+    }
+
+    private var globalShortcutSection: some View {
+        AppSectionCard(title: "Global Shortcut") {
+            VStack(alignment: .leading, spacing: AppUI.Spacing.medium) {
+                settingRow(title: "Key") {
                     Picker("Key", selection: $localKeyCode) {
                         ForEach(HotKeyConfiguration.keyOptions) { option in
                             Text(option.label).tag(option.keyCode)
@@ -107,8 +146,13 @@ struct SettingsView: View {
                     .onChange(of: localKeyCode) { _, _ in
                         applyHotKey()
                     }
+                }
 
-                    HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Modifiers")
+                        .font(.system(size: AppUI.FontSize.body, weight: .medium, design: .rounded))
+
+                    HStack(spacing: 14) {
                         Toggle("Control", isOn: $useControl)
                         Toggle("Option", isOn: $useOption)
                         Toggle("Shift", isOn: $useShift)
@@ -119,15 +163,36 @@ struct SettingsView: View {
                     .onChange(of: useOption) { _, _ in applyHotKey() }
                     .onChange(of: useShift) { _, _ in applyHotKey() }
                     .onChange(of: useCommand) { _, _ in applyHotKey() }
-
-                    Text("Current shortcut: \(currentHotKey.displayString)")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
                 }
+
+                Text(currentHotKey.displayString)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundStyle(AppUI.quietSecondary)
             }
         }
-        .padding(20)
-        .frame(width: 440, height: 280)
+    }
+
+    private var helpSection: some View {
+        AppSectionCard(title: "Notes") {
+            VStack(alignment: .leading, spacing: AppUI.Spacing.small) {
+                AppHintText(text: "If the shortcut stops working, check accessibility permissions in macOS settings.")
+                AppHintText(text: "If translation is unavailable, verify the selected languages are supported by Apple’s translation features.")
+            }
+        }
+    }
+
+    private var sectionDivider: some View {
+        Divider()
+            .overlay(AppUI.separator)
+    }
+
+    private func settingRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: AppUI.FontSize.body, weight: .medium, design: .rounded))
+
+            content()
+        }
     }
 
     private func applyHotKey() {

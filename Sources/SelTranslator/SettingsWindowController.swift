@@ -50,6 +50,7 @@ final class SettingsWindowController: NSWindowController {
         window.title = "SelTranslator Settings"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.level = .normal
+        window.setContentSize(NSSize(width: 540, height: 500))
         window.center()
         window.isReleasedWhenClosed = false
         super.init(window: window)

@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class TranslatorPanelController: NSObject, NSWindowDelegate {
-    private let popupSize = NSSize(width: 700, height: 338)
+    private let popupSize = NSSize(width: 760, height: 404)
     private let copyToastSize = NSSize(width: 260, height: 92)
     private let popupVerticalOffset: CGFloat = 40
     private let toastVerticalOffset: CGFloat = 32
@@ -207,13 +207,7 @@ struct CopyToastView: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.ultraThickMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.16), radius: 24, y: 12)
+            AppPanelBackground()
 
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.circle.fill")
