@@ -15,6 +15,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "SelTranslator"
+        ),
+        .testTarget(
+            name: "SelTranslatorTests",
+            dependencies: ["SelTranslator"]
         )
     ]
 )
