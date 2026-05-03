@@ -21,6 +21,7 @@ final class TranslatorPanelController: NSObject, NSWindowDelegate {
     private let panel: FloatingTranslatorPanel
     private let copyToastPanel: CopyToastPanel
     private var copyToastTask: Task<Void, Never>?
+    private var outsideMouseMonitors: [Any] = []
     private var isClosing = false
 
     init(viewModel: TranslatorViewModel) {
@@ -49,8 +50,7 @@ final class TranslatorPanelController: NSObject, NSWindowDelegate {
             self?.dismiss(reason: reason)
         }
         panel.isReleasedWhenClosed = false
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        configureSpacesPinnedPanel(panel, level: .floating)
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
@@ -60,8 +60,7 @@ final class TranslatorPanelController: NSObject, NSWindowDelegate {
         let toastView = CopyToastView()
         copyToastPanel.contentViewController = NSHostingController(rootView: toastView)
         copyToastPanel.isReleasedWhenClosed = false
-        copyToastPanel.level = .statusBar
-        copyToastPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        configureSpacesPinnedPanel(copyToastPanel, level: .statusBar)
         copyToastPanel.backgroundColor = .clear
         copyToastPanel.isOpaque = false
         copyToastPanel.ignoresMouseEvents = true
@@ -73,6 +72,7 @@ final class TranslatorPanelController: NSObject, NSWindowDelegate {
 
     func show() {
         cancelCopyToast()
+        installOutsideMouseMonitors()
 
         let finalFrame = centeredFrame(size: popupSize, verticalOffset: popupVerticalOffset)
         panel.setFrame(finalFrame.offsetBy(dx: 0, dy: popupIntroOffset), display: false)
@@ -92,6 +92,7 @@ final class TranslatorPanelController: NSObject, NSWindowDelegate {
 
     func dismiss(reason: TranslatorDismissReason) {
         guard panel.isVisible, !isClosing else { return }
+        removeOutsideMouseMonitors()
         cancelCopyToast()
         isClosing = true
         viewModel.prepareForDismiss(reason: reason)
@@ -114,7 +115,8 @@ final class TranslatorPanelController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        dismiss(reason: .outsideClick)
+        // Space and full-screen switches can resign key without an outside click.
+        // Mouse monitors own click-away dismissal so the panel can follow Spaces.
     }
 
     private func copyAndShowToast() {
@@ -164,6 +166,44 @@ final class TranslatorPanelController: NSObject, NSWindowDelegate {
         copyToastTask = nil
         copyToastPanel.orderOut(nil)
         copyToastPanel.alphaValue = 1
+    }
+
+    private func configureSpacesPinnedPanel(_ panel: NSPanel, level: NSWindow.Level) {
+        panel.level = level
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.hidesOnDeactivate = false
+    }
+
+    private func installOutsideMouseMonitors() {
+        removeOutsideMouseMonitors()
+
+        let eventMask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        let localMonitor = NSEvent.addLocalMonitorForEvents(matching: eventMask) { [weak self] event in
+            let windowNumber = event.windowNumber
+            Task { @MainActor [weak self] in
+                self?.handleOutsideMouseDown(windowNumber: windowNumber)
+            }
+            return event
+        }
+        let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: eventMask) { [weak self] event in
+            let windowNumber = event.windowNumber
+            Task { @MainActor [weak self] in
+                self?.handleOutsideMouseDown(windowNumber: windowNumber)
+            }
+        }
+
+        outsideMouseMonitors = [localMonitor, globalMonitor].compactMap { $0 }
+    }
+
+    private func removeOutsideMouseMonitors() {
+        outsideMouseMonitors.forEach(NSEvent.removeMonitor)
+        outsideMouseMonitors.removeAll()
+    }
+
+    private func handleOutsideMouseDown(windowNumber: Int) {
+        guard panel.isVisible, !isClosing else { return }
+        guard windowNumber != panel.windowNumber, windowNumber != copyToastPanel.windowNumber else { return }
+        dismiss(reason: .outsideClick)
     }
 
     private func centeredFrame(size: NSSize, verticalOffset: CGFloat) -> NSRect {
